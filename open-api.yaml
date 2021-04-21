@@ -1,0 +1,84 @@
+openapi: 3.0.0
+info:
+  title: Distributed List Consumption API   
+  description: API used for a distributed system to process a list
+  version: 1.0.0
+
+paths:
+  /batch:
+    get:
+      parameters:
+        - name: include 
+          in: query
+          description: Attributes to include - supports 'batch'
+          required: false
+          schema:
+            type: string
+            example: batch
+      summary: Gets the current batch number
+      description: Gets the next batch number available. Will conditionally return the batch itself
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - batchNumber
+                properties:
+                  batchNumber:
+                    type: number
+                    description: The current batch number
+                  batch:
+                    type: array
+                    description: The current batch
+                    items:
+                      type: object
+        500:
+          content:
+            application/json:
+              schema:
+                type: object 
+                properties:
+                  message:
+                    type: string
+                    description: Error message from execution
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${IncrementBatchNumberFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+    post:
+      summary: Gets the current batch number
+      description: Gets the next batch number available. Will conditionally return the batch itself
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                batchSize:
+                  type: number
+                  description: Size of each batch to pull from the dataset
+                  example: 50
+                datalist:
+                  type: array
+                  description: Entire datalist to process                  
+      responses:
+        204:
+          description: The request was successful and the batch has been replaced
+        500:
+          content:
+            application/json:
+              schema:
+                type: object 
+                properties:
+                  message:
+                    type: string
+                    description: Error message from execution
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResetBatchNumberFunction.Arn}/invocations
+        httpMethod: POST
+        type: aws_proxy

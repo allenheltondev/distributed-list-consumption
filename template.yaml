@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM Template building a basic API that tracks a list of data for distributed processing
+
+Parameters:
+  TableName: 
+    Type: String
+    Default: distributedlist
+
+Globals:
+  Function:
+    MemorySize: 768
+    Runtime: nodejs12.x
+
+Resources:
+  DistributedListTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST      
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+
+  DistributedListAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      EndpointConfiguration:
+        Type: REGIONAL
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: ./open-api.yaml      
+    
+  IncrementBatchNumberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/increment-batch-number
+      Handler: increment-batch-number.lambdaHandler
+      Role: !GetAtt IncrementBatchNumberRole.Arn
+      Events:
+        IncrementBatchNumberEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DistributedListAPI
+            Path: /batch
+            Method: GET
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DistributedListTable
+
+  IncrementBatchNumberRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: IncrementBatchNumberPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt DistributedListTable.Arn    
+
+  ResetBatchNumberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/reset-batch-number
+      Handler: reset-batch-number.lambdaHandler
+      Role: !GetAtt ResetBatchNumberRole.Arn
+      Events:
+        ResetBatchEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DistributedListAPI
+            Path: /batch
+            Method: POST
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DistributedListTable
+
+  ResetBatchNumberRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: ResetBatchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt DistributedListTable.Arn    
